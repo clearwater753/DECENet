@@ -3,12 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-#from torchinfo import summary
+from torchinfo import summary
 
 
 from torch.autograd import Variable
-
-
 
 
 __all__ = ["DECENet"]
@@ -39,7 +37,6 @@ class Conv(nn.Module):
 
         return output
 
-
 class BNGeLU(nn.Module):
     def __init__(self, nIn):
         super().__init__()
@@ -52,11 +49,6 @@ class BNGeLU(nn.Module):
         output = self.acti(output)
 
         return output
-
-
-
-
-
 
 class AFCModule(nn.Module):
     def __init__(self, nIn, d=1, kSize=3, dkSize=3):
@@ -117,7 +109,6 @@ class SpatialAttention(nn.Module):
         x = self.b_n(x)
         return self.sigmoid(x)
 
-
 class eca_layer(nn.Module):
     """Constructs a ECA module.
     Args:
@@ -145,9 +136,6 @@ class eca_layer(nn.Module):
 
         return x * y.expand_as(x)
 
-
-
-
 class h_sigmoid(nn.Module):
     def __init__(self, inplace=True):
         super(h_sigmoid, self).__init__()
@@ -156,7 +144,6 @@ class h_sigmoid(nn.Module):
     def forward(self, x):
         return self.relu(x + 3) / 6
 
-
 class h_swish(nn.Module):
     def __init__(self, inplace=True):
         super(h_swish, self).__init__()
@@ -164,7 +151,6 @@ class h_swish(nn.Module):
 
     def forward(self, x):
         return x * self.sigmoid(x)
-
 
 class CoordAtt(nn.Module):
     def __init__(self, inp, oup, reduction=4):
@@ -230,8 +216,6 @@ class DownSamplingBlock(nn.Module):
 
         return output
 
-
-
 class UpsamplerBlock (nn.Module):
     def __init__(self, ninput, noutput):
         super().__init__()
@@ -244,9 +228,6 @@ class UpsamplerBlock (nn.Module):
         output = self.bn(output)
         output = self.relu(output)
         return output
-
-
-
 
 class ExternalAttention(nn.Module):
     def __init__(self,
@@ -336,8 +317,6 @@ class ExternalAttention(nn.Module):
 
         return x
 
-
-
 class EABranch(nn.Module):
     def __init__(self,
                  in_channels,
@@ -387,9 +366,6 @@ class EABranch(nn.Module):
         
         x_l = x_l + self.attn_l(x_l, cross_k, cross_v)  # n,out_chs_h,h,w
         return x_l
-
-
-
 
 class DECENet(nn.Module):
     
@@ -511,93 +487,144 @@ class DECENet(nn.Module):
         self.cross2 = EABranch(in_channels=[32,64], out_channels=[32,64], num_heads=4, drop_rate=0.05, cross_size=8, use_cross_kv=True)
         
 
-
-
-
-
     def forward(self, input):
         
         
-        output0 = self.init_conv(input)
-        output0 = self.bn_gelu_1(output0)
+        output0 = self.init_conv(input) # [1, 3, 512, 1024] -> [1, 16, 256, 512]
+        output0 = self.bn_gelu_1(output0) # [1, 16, 256, 512] -> [1, 16, 256, 512]
 
 
         # Detail Branch
-        output_sipath = self.conv_sipath1(output0)
-        output_sipath = self.conv_sipath2(output_sipath)
-        output_sipath1 = self.conv_sipath3(output_sipath)
+        output_sipath = self.conv_sipath1(output0) # [1, 16, 256, 512] -> [1, 64, 256, 512]
+        output_sipath = self.conv_sipath2(output_sipath) # [1, 64, 256, 512] -> [1, 64, 256, 512]
+        output_sipath1 = self.conv_sipath3(output_sipath) # [1, 64, 256, 512] -> [1, 32, 256, 512]
         
 
-        output_sipath = self.atten_sipath(output_sipath1)
+        output_sipath = self.atten_sipath(output_sipath1) # [1, 32, 256, 512] -> [1, 1, 256, 512]
 
         # Branch1
-        output1 = self.attention1_1(output0)
+        output1 = self.attention1_1(output0) # [1, 16, 256, 512] -> [1, 16, 256, 512]
 
         # block1
-        output1 = self.BRU_Block_1(output1)
-        output1 = self.bn_gelu_2(output1)
-        output1 = self.attention2_1(output1)
+        output1 = self.BRU_Block_1(output1) # [1, 16, 256, 512] -> [1, 16, 256, 512]
+        output1 = self.bn_gelu_2(output1) # [1, 16, 256, 512] -> [1, 16, 256, 512]
+        output1 = self.attention2_1(output1) # [1, 16, 256, 512] -> [1, 16, 256, 512]
 
         # down1
-        output1 = self.downsample_1(output1)
+        output1 = self.downsample_1(output1) # [1, 16, 256, 512] -> [1, 64, 128, 256]
 
         # block2
-        output1 = self.BRU_Block_2(output1)
-        output1 = self.bn_gelu_3(output1)
-        output1 = self.attention3_1(output1)
+        output1 = self.BRU_Block_2(output1) # [1, 64, 128, 256] -> [1, 64, 128, 256]
+        output1 = self.bn_gelu_3(output1) # [1, 64, 128, 256] -> [1, 64, 128, 256]
+        output1 = self.attention3_1(output1) # [1, 64, 128, 256] -> [1, 64, 128, 256]
 
         # down2
-        output1 = self.downsample_2(output1)
+        output1 = self.downsample_2(output1) # [1, 64, 128, 256] -> [1, 128, 64, 128]
 
         # block3
-        output2 = self.BRU_Block_3(output1)
-        output2 = self.bn_gelu_4(output2)
+        output2 = self.BRU_Block_3(output1) # [1, 128, 64, 128] -> [1, 128, 64, 128]
+        output2 = self.bn_gelu_4(output2) # [1, 128, 64, 128] -> [1, 128, 64, 128]
 
-
-        out_side = F.interpolate(self.sidehead(output2),input.size()[2:], mode='bilinear', align_corners=False)
+        # 辅助损失头
+        # need output2
+        # 测试时不需要
+        # out_side = F.interpolate(self.sidehead(output2),input.size()[2:], mode='bilinear', align_corners=False) # [1, 128, 64, 128] -> [1, class, 512, 1024]
         # ---------- Decoder ----------------
+        
+        # 开始上采样
+        # need output2, output_sipath1, output_sipath
         # up1
+        output = self.attention4_1(output2) # [1, 128, 64, 128] -> [1, 128, 64, 128]
 
-        output = self.attention4_1(output2)
 
-
-        output = self.upsample_1(output)
+        output = self.upsample_1(output) # [1, 128, 64, 128] -> [1, 64, 128, 256]
 
         # block4
-        output = self.BRU_Block_4(output)
-        output = self.bn_gelu_5(output)
+        output = self.BRU_Block_4(output) # [1, 64, 128, 256] -> [1, 64, 128, 256]
+        output = self.bn_gelu_5(output) # [1, 64, 128, 256] -> [1, 64, 128, 256]
 
 
 
-        output = self.cross2(output_sipath1, output)
+        output = self.cross2(output_sipath1, output) # [1, 32, 256, 512], [1, 64, 256, 512] -> [1, 64, 256, 512]
 
         # up2
-        output = self.upsample_2(output)
+        output = self.upsample_2(output) # [1, 64, 128, 256] -> [1, 32, 256, 512]
 
         # block5
-        output = self.BRU_Block_5(output)
-        output = self.bn_gelu_6(output)
-        output = self.attention6_1(output)
+        output = self.BRU_Block_5(output) # [1, 32, 256, 512] -> [1, 32, 256, 512]
+        output = self.bn_gelu_6(output) # [1, 32, 256, 512] -> [1, 32, 256, 512]
+        output = self.attention6_1(output) # [1, 32, 256, 512] -> [1, 32, 256, 512]
 
 
-        output = torch.cat((output , output_sipath),dim=1)
+        output = torch.cat((output , output_sipath),dim=1) # [1, 32, 256, 512], [1, 1, 256, 512] -> [1, 33, 256, 512]
 
-        output = self.bn_gelu_8(output)
-
-        # 
-        output = self.endatten(output)
+        output = self.bn_gelu_8(output) # [1, 33, 256, 512] -> [1, 33, 256, 512]
 
         # 
-        out = self.output_conv(output)
+        output = self.endatten(output) # [1, 33, 256, 512] -> [1, 33, 256, 512]
+
+        # 
+        out = self.output_conv(output) # [1, 33, 256, 512] -> [1, class, 512, 1024]
+        # 测试时
+        return out
+        # 训练时
+        # return out,out_side
 
 
-        return out,out_side
-
-
-
+def measure_fps(model, input_tensor, num_warmup=10, num_iters=100):
+    # 预热
+    for _ in range(num_warmup):
+        with torch.no_grad():
+            _ = model(input_tensor)
+    
+    # 正式测量
+    start_time = time.time()
+    for _ in range(num_iters):
+        with torch.no_grad():
+            _ = model(input_tensor)
+    end_time = time.time()
+    
+    total_time = end_time - start_time
+    fps = num_iters / total_time
+    return fps
 
 """print layers and params of network"""
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = GNDNet(classes=19).to(device)
-    summary(model, (1,3, 512, 1024))
+    model = DECENet(classes=19).to(device)
+    model.eval()
+    input_tensor = torch.randn(1, 3, 512, 1024).to(device)
+    model.eval()
+
+    # 计算Flops
+    from thop import profile
+    from thop import clever_format
+    # 计算FLOPs和参数数量
+    flops, params = profile(model, inputs=(input_tensor, ))
+
+    # 格式化输出
+    flops, params = clever_format([flops, params], "%.3f")
+
+    print(f"FLOPs: {flops}")
+    print(f"Params: {params}")
+
+    # 计算fps
+    import time
+    import numpy as np
+    fps = measure_fps(model, input_tensor)
+    print(f"FPS: {fps:.2f}")
+
+    # 测试内存占用
+    def print_memory_usage():
+        allocated = torch.cuda.memory_allocated() / 1024**2
+        reserved = torch.cuda.memory_reserved() / 1024**2
+        print(f"Allocated memory: {allocated:.2f} MB")
+        print(f"Reserved memory: {reserved:.2f} MB")
+    
+    print("Before forward pass:")
+    print_memory_usage()
+    
+    output = model(torch.randn(1,3,360,480).to(device))
+    
+    print("After forward pass:")
+    print_memory_usage()
